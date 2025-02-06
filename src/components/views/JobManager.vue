@@ -1,5 +1,45 @@
 <template>
   <div id="job_manager">
+    <!-- 添加/编辑节点弹窗 -->
+    <el-dialog
+        :title="dialogTitle"
+        :visible.sync="dialogVisible"
+        width="400px"
+        height="800px"
+        :close-on-click-modal="false"
+        @close="resetDialog"
+    >
+      <el-form :model="formData" ref="formRef" label-width="80px">
+        <el-form-item label="节点名称" prop="name">
+          <el-input v-model="formData.name" placeholder="请输入节点名称" />
+        </el-form-item>
+        <el-form-item label="父节点" prop="parentId">
+          <el-select v-model="formData.parentName" placeholder="请选择父节点">
+            <el-option
+                v-for="node in treeData"
+                :key="node.name"
+                :label="node.label"
+                :value="node.id"
+                style="height: 100px; overflow-y: auto;"
+            >
+              <el-tree
+                  :data="treeData"
+                  :default-expand-all="true"
+                  :props="defaultProps"
+                  :expand-on-click-node="false"
+                  @node-click="handleNodeSelect"
+                  height="100px"
+                  style="overflow-y: auto;"
+              ></el-tree>
+            </el-option>
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <span slot="footer" class="dialog-footer">
+        <el-button @click="resetDialog">取消</el-button>
+        <el-button type="primary" @click="saveNode">保存</el-button>
+      </span>
+    </el-dialog>
     <el-container>
       <!-- 左侧树状分类结构 -->
       <el-aside width="200px" style="border-right: 1px solid #ebeef5;">
@@ -12,48 +52,14 @@
             :data="treeData"
             draggable
             :render-content="renderContent"
+            no-drag="id"
+            :highlight-current="true"
             :default-expand-all="true"
             :props="defaultProps"
+            :expand-on-click-node="false"
             @node-click="handleNodeClick"></el-tree>
       </el-aside>
-      <!-- 添加/编辑节点弹窗 -->
-      <el-dialog
-          :title="dialogTitle"
-          :visible.sync="dialogVisible"
-          width="400px"
-          height="400px"
-          :close-on-click-modal="false"
-          @close="resetDialog"
-      >
-        <el-form :model="formData" ref="formRef" label-width="80px">
-          <el-form-item label="节点名称" prop="name">
-            <el-input v-model="formData.name" placeholder="请输入节点名称" />
-          </el-form-item>
-          <el-form-item label="父节点" prop="parentId">
-            <el-select v-model="formData.parentId" placeholder="请选择父节点">
-              <el-option
-                  v-for="node in treeData"
-                  :key="node.value"
-                  :label="node.label"
-                  :value="node.value"
-                  style="max-height: 200px; overflow-y: auto;"
-              >
-              <el-tree
-                  :data="treeData"
-                  :default-expand-all="true"
-                  :props="defaultProps"
-                  @node-click="handleNodeSelect"
-                  style="max-height: 200px; overflow-y: auto;"
-              ></el-tree>
-              </el-option>
-            </el-select>
-          </el-form-item>
-        </el-form>
-        <span slot="footer" class="dialog-footer">
-        <el-button @click="resetDialog">取消</el-button>
-        <el-button type="primary" @click="saveNode">保存</el-button>
-      </span>
-      </el-dialog>
+
 
       <!-- 右侧现有内容 -->
       <el-main>
@@ -490,7 +496,9 @@ export default {
         children: 'children',
         id: "id",
         label: 'label',
-        icon: "icon"
+        icon: "icon",
+        parentId: "parentId",
+        parentName: "parentName"
       },
 
       dialogVisible: false,
@@ -511,6 +519,7 @@ export default {
         jobDescription: "",
         appId: window.localStorage.getItem("Power_appId"),
         jobParams: "",
+        catalogId: undefined,
         timeExpressionType: "",
         timeExpression: "",
         executeType: "",
@@ -552,6 +561,7 @@ export default {
         appId: window.localStorage.getItem("Power_appId"),
         index: 0,
         pageSize: 10,
+        catalogId: undefined,
         jobId: undefined,
         keyword: undefined
       },
@@ -613,6 +623,7 @@ export default {
       jobExporterMode: undefined,
       jobExporterTargetId: undefined,
       jobExporterDialogVisible: false,
+      currentCatalogId: null,
     }
   },
   methods: {
@@ -631,23 +642,29 @@ export default {
             </span>
           </span>);
     },
-    handleNodeClick() {
-
+    handleNodeClick(data) {
+      this.jobQueryContent.catalogId = data.id;
+      this.currentCatalogId = data.id;
+      this.listJobInfos();
     },
 
     handleNodeSelect(node) {
+      if (node.id === this.formData.id) {
+        this.$message.error("不能选择自己作为父目录");
+        return;
+      }
       this.formData.parentId = node.id;
-      this.formData.parentName = node.label;
+      this.formData.parentName = node.name;
     },
 
     addNode() {
       this.dialogTitle = '新增分类';
-      this.formData.value = {name: '', parentId: null, parentName: '根分类'};
+      this.formData = {id: null, name: '', parentId: null, parentName: '根分类'};
       this.dialogVisible = true;
     },
     openEditDialog(node) {
       this.dialogTitle = '编辑分类';
-      this.formData = {name: node.name, parentId: node.parentId, id: node.id};
+      this.formData = {name: node.name, parentId: node.parentId, id: node.id, parentName: node.parentName};
       this.dialogVisible = true;
     },
 
@@ -709,6 +726,7 @@ export default {
         alarmConfig.silenceWindowLen = 0;
       }
       this.modifiedJobForm.alarmConfig = alarmConfig;
+      this.modifiedJobForm.catalogId = this.currentCatalogId;
       await this.axios.post("/job/save", this.modifiedJobForm);
       this.modifiedJobFormVisible = false;
       this.$message.success(this.$t('message.success'));
